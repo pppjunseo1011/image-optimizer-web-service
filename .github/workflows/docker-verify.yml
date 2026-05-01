@@ -1,0 +1,34 @@
+name: Docker Verify
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  docker-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t image-optimizer:ci .
+
+      - name: Run container
+        run: |
+          docker run -d --name image_optimizer_ci \
+            -e PORT=10000 \
+            -p 10000:10000 \
+            image-optimizer:ci
+
+      - name: Check health endpoint
+        run: |
+          sleep 5
+          curl --fail http://localhost:10000/health
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f image_optimizer_ci || true
