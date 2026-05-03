@@ -85,7 +85,9 @@ def resize_image(
 
     fmt = normalize_format(output_format)
     image = load_image(file_bytes)
-    resized = image.resize((width, height))
+    
+    # 의도적 버그: width와 height 순서를 반대로 입력
+    resized = image.resize((height, width))
 
     output = save_image_to_bytes(resized, fmt)
     return output, fmt
