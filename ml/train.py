@@ -13,7 +13,8 @@ DATA_PATH = os.path.join(BASE_DIR, "data", "image_optimize_train.csv")
 ARTIFACT_DIR = os.path.join(BASE_DIR, "artifacts")
 MODEL_PATH = os.path.join(ARTIFACT_DIR, "image_optimizer_model.joblib")
 
-MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI") or "sqlite:///mlflow.db"
+MLFLOW_REGISTRY_URI = os.getenv("MLFLOW_REGISTRY_URI") or MLFLOW_TRACKING_URI
 EXPERIMENT_NAME = "image-optimization-recommendation"
 REGISTERED_MODEL_NAME = "image-optimizer-model"
 
@@ -38,6 +39,7 @@ def train_model():
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     df = pd.read_csv(DATA_PATH)
