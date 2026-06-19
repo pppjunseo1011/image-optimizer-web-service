@@ -4,6 +4,8 @@ import pandas as pd
 import mlflow
 import mlflow.sklearn
 
+from mlflow.tracking import MlflowClient
+from app.config import MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI, REGISTERED_MODEL_NAME
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
@@ -13,10 +15,10 @@ DATA_PATH = os.path.join(BASE_DIR, "data", "image_optimize_train.csv")
 ARTIFACT_DIR = os.path.join(BASE_DIR, "artifacts")
 MODEL_PATH = os.path.join(ARTIFACT_DIR, "image_optimizer_model.joblib")
 
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI") or "sqlite:///mlflow.db"
+# MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI") or "sqlite:///mlflow.db"
 MLFLOW_REGISTRY_URI = os.getenv("MLFLOW_REGISTRY_URI") or MLFLOW_TRACKING_URI
 EXPERIMENT_NAME = "image-optimization-recommendation"
-REGISTERED_MODEL_NAME = "image-optimizer-model"
+# REGISTERED_MODEL_NAME = "image-optimizer-model"
 
 FEATURE_COLUMNS = [
     "width",
@@ -97,6 +99,25 @@ def train_model():
             artifact_path="model",
             registered_model_name=REGISTERED_MODEL_NAME,
         )
+        
+        client = MlflowClient()
+
+        latest_versions = client.search_model_versions(
+            f"name='{REGISTERED_MODEL_NAME}'"
+        )
+
+        latest_version = max(
+            latest_versions,
+            key=lambda version: int(version.version)
+        ).version
+
+        client.set_registered_model_alias(
+            name=REGISTERED_MODEL_NAME,
+            alias="champion",
+            version=str(latest_version)
+        )
+
+        print(f"champion alias set to version: {latest_version}")
 
         print(f"Model saved to: {MODEL_PATH}")
         print(f"train_accuracy: {train_accuracy:.4f}")

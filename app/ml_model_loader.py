@@ -1,46 +1,82 @@
-import os
-import joblib
 import pandas as pd
+import mlflow
+import mlflow.sklearn
 
+from mlflow.tracking import MlflowClient
+
+from app.config import MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI, MODEL_URI
 from app.image_features import extract_image_features
 
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "ml", "artifacts", "image_optimizer_model.joblib")
+FEATURE_COLUMNS = [
+    "width",
+    "height",
+    "file_size_kb",
+    "pixel_count",
+    "aspect_ratio",
+    "format_code",
+    "has_alpha",
+]
 
-_model_bundle = None
+TARGET_COLUMNS = [
+    "recommended_action",
+    "recommended_format",
+    "recommended_quality",
+]
+
+_model = None
 
 
 def load_recommendation_model():
-    global _model_bundle
+    global _model
 
-    if _model_bundle is None:
-        if not os.path.exists(MODEL_PATH):
-            raise FileNotFoundError(
-                f"Model file not found: {MODEL_PATH}. Run 'python -m ml.train' first."
-            )
+    if _model is None:
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
+        _model = mlflow.sklearn.load_model(MODEL_URI)
 
-        _model_bundle = joblib.load(MODEL_PATH)
+    return _model
 
-    return _model_bundle
+
+def get_model_info():
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
+
+    try:
+        info = mlflow.models.get_model_info(MODEL_URI)
+        run = MlflowClient().get_run(info.run_id)
+
+        return {
+            "model_uri": MODEL_URI,
+            "run_id": info.run_id,
+            "model_type": run.data.params.get("model_type"),
+            "test_accuracy": run.data.metrics.get("test_accuracy"),
+        }
+
+    except Exception:
+        return {
+            "model_uri": MODEL_URI,
+            "run_id": "unknown",
+            "model_type": None,
+            "test_accuracy": None,
+        }
 
 
 def predict_recommendation(image_bytes: bytes) -> dict:
-    model_bundle = load_recommendation_model()
-
-    model = model_bundle["model"]
-    feature_columns = model_bundle["feature_columns"]
-    target_columns = model_bundle["target_columns"]
+    model = load_recommendation_model()
 
     features = extract_image_features(image_bytes)
 
-    input_df = pd.DataFrame([[features[col] for col in feature_columns]], columns=feature_columns)
+    input_df = pd.DataFrame(
+        [[features[col] for col in FEATURE_COLUMNS]],
+        columns=FEATURE_COLUMNS,
+    )
 
     prediction = model.predict(input_df)[0]
-
-    result = dict(zip(target_columns, prediction))
+    result = dict(zip(TARGET_COLUMNS, prediction))
 
     score = None
+
     if hasattr(model, "predict_proba"):
         probas = model.predict_proba(input_df)
 
@@ -56,5 +92,5 @@ def predict_recommendation(image_bytes: bytes) -> dict:
         "recommended_format": result["recommended_format"],
         "recommended_quality": int(result["recommended_quality"]),
         "score": round(score, 4) if score is not None else None,
-        "model_path": MODEL_PATH,
+        "model_info": get_model_info(),
     }
