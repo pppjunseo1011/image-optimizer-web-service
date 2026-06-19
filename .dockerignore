@@ -1,11 +1,11 @@
 __pycache__/
+*.pyc
 .pytest_cache/
 .venv/
 venv/
-.git/
-.github/
 .env
-*.pyc
-*.pyo
-*.pyd
-.DS_Store
+.git/
+
+mlruns/
+mlflow.db
+ml/artifacts/
