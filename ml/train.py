@@ -8,7 +8,8 @@ from mlflow.tracking import MlflowClient
 from app.config import MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI, REGISTERED_MODEL_NAME
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-
+from mlflow.tracking import MlflowClient
+from ml.model_promoter import promote_if_better
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_PATH = os.path.join(BASE_DIR, "data", "image_optimize_train.csv")
@@ -113,11 +114,16 @@ def train_model():
 
         client.set_registered_model_alias(
             name=REGISTERED_MODEL_NAME,
-            alias="champion",
+            alias="challenger",
             version=str(latest_version)
         )
 
-        print(f"champion alias set to version: {latest_version}")
+        print(f"challenger alias set to version: {latest_version}")
+
+        promote_if_better(
+            new_version=latest_version,
+            new_test_accuracy=test_accuracy,
+        )
 
         print(f"Model saved to: {MODEL_PATH}")
         print(f"train_accuracy: {train_accuracy:.4f}")
