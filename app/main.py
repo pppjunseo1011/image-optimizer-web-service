@@ -1,3 +1,10 @@
+import logging
+
+from pydantic import BaseModel
+
+from app.config import LOW_CONFIDENCE_THRESHOLD
+from app.prediction_logger import save_prediction_log
+from app.feedback import save_feedback
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import HTMLResponse, StreamingResponse
 from app.ml_model_loader import predict_recommendation
@@ -16,6 +23,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+logger = logging.getLogger(__name__)
+
+class FeedbackRequest(BaseModel):
+    recommended_action: str
+    user_selected_action: str
+    recommended_format: str
+    user_selected_format: str
+    score: float | None = None
+    comment: str = ""
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -194,7 +210,59 @@ async def recommend_image(file: UploadFile = File(...)):
     try:
         image_bytes = await file.read()
         result = predict_recommendation(image_bytes)
+
+        features = result["features"]
+        model_info = result.get("model_info", {})
+
+        save_prediction_log(
+            width=features["width"],
+            height=features["height"],
+            file_size_kb=features["file_size_kb"],
+            recommended_action=result["recommended_action"],
+            recommended_format=result["recommended_format"],
+            recommended_quality=result["recommended_quality"],
+            score=result["score"],
+            model_uri=model_info.get("model_uri", "unknown"),
+            run_id=model_info.get("run_id", "unknown"),
+        )
+
+        if result["score"] is not None and result["score"] < LOW_CONFIDENCE_THRESHOLD:
+            logger.warning(
+                f"LOW CONFIDENCE /recommend | score={result['score']} "
+                f"action={result['recommended_action']} "
+                f"format={result['recommended_format']}"
+            )
+
+        logger.info(
+            f"OK /recommend | action={result['recommended_action']} "
+            f"format={result['recommended_format']} score={result['score']}"
+        )
+
         return result
 
     except Exception as e:
+        logger.exception(f"FAIL /recommend | error={type(e).__name__}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@app.post("/feedback")
+async def feedback(payload: FeedbackRequest):
+    try:
+        save_feedback(
+            recommended_action=payload.recommended_action,
+            user_selected_action=payload.user_selected_action,
+            recommended_format=payload.recommended_format,
+            user_selected_format=payload.user_selected_format,
+            score=payload.score,
+            comment=payload.comment,
+        )
+
+        logger.info(
+            f"OK /feedback | recommended_action={payload.recommended_action} "
+            f"user_selected_action={payload.user_selected_action}"
+        )
+
+        return {"status": "feedback saved"}
+
+    except Exception as e:
+        logger.exception(f"FAIL /feedback | error={type(e).__name__}: {e}")
         raise HTTPException(status_code=400, detail=str(e))

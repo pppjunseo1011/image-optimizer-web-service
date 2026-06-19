@@ -8,3 +8,4 @@ venv/
 mlruns/
 mlflow.db
 ml/artifacts/
+logs/
