@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import HTMLResponse, StreamingResponse
+from app.ml_model_loader import predict_recommendation
 
 from app.image_utils import (
     resize_image,
@@ -187,3 +188,13 @@ async def convert_endpoint(
             "Content-Disposition": f'attachment; filename="converted_image.{extension}"'
         },
     )
+    
+@app.post("/recommend")
+async def recommend_image(file: UploadFile = File(...)):
+    try:
+        image_bytes = await file.read()
+        result = predict_recommendation(image_bytes)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
