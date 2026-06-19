@@ -1,9 +1,10 @@
 import os
 import joblib
 import pandas as pd
+import mlflow
+import mlflow.sklearn
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
 
@@ -11,6 +12,10 @@ BASE_DIR = os.path.dirname(__file__)
 DATA_PATH = os.path.join(BASE_DIR, "data", "image_optimize_train.csv")
 ARTIFACT_DIR = os.path.join(BASE_DIR, "artifacts")
 MODEL_PATH = os.path.join(ARTIFACT_DIR, "image_optimizer_model.joblib")
+
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+EXPERIMENT_NAME = "image-optimization-recommendation"
+REGISTERED_MODEL_NAME = "image-optimizer-model"
 
 FEATURE_COLUMNS = [
     "width",
@@ -32,6 +37,9 @@ TARGET_COLUMNS = [
 def train_model():
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
 
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(EXPERIMENT_NAME)
+
     df = pd.read_csv(DATA_PATH)
 
     X = df[FEATURE_COLUMNS]
@@ -49,26 +57,49 @@ def train_model():
         random_state=42,
     )
 
-    model.fit(X_train, y_train)
+    with mlflow.start_run(run_name="RandomForestClassifier"):
+        mlflow.log_param("model_type", "RandomForestClassifier")
+        mlflow.log_param("n_estimators", 100)
+        mlflow.log_param("random_state", 42)
+        mlflow.log_param("test_size", 0.25)
+        mlflow.log_param("data_path", DATA_PATH)
+        mlflow.log_param("row_count", len(df))
+        mlflow.log_param("feature_count", len(FEATURE_COLUMNS))
+        mlflow.log_param("target_count", len(TARGET_COLUMNS))
 
-    train_preds = model.predict(X_train)
-    test_preds = model.predict(X_test)
+        model.fit(X_train, y_train)
 
-    train_accuracy = (y_train.to_numpy() == train_preds).all(axis=1).mean()
-    test_accuracy = (y_test.to_numpy() == test_preds).all(axis=1).mean()
+        train_preds = model.predict(X_train)
+        test_preds = model.predict(X_test)
 
-    joblib.dump(
-        {
-            "model": model,
-            "feature_columns": FEATURE_COLUMNS,
-            "target_columns": TARGET_COLUMNS,
-        },
-        MODEL_PATH,
-    )
+        train_accuracy = (y_train.to_numpy() == train_preds).all(axis=1).mean()
+        test_accuracy = (y_test.to_numpy() == test_preds).all(axis=1).mean()
 
-    print(f"Model saved to: {MODEL_PATH}")
-    print(f"train_accuracy: {train_accuracy:.4f}")
-    print(f"test_accuracy: {test_accuracy:.4f}")
+        mlflow.log_metric("train_accuracy", train_accuracy)
+        mlflow.log_metric("test_accuracy", test_accuracy)
+
+        joblib.dump(
+            {
+                "model": model,
+                "feature_columns": FEATURE_COLUMNS,
+                "target_columns": TARGET_COLUMNS,
+            },
+            MODEL_PATH,
+        )
+
+        mlflow.log_artifact(DATA_PATH)
+        mlflow.log_artifact(MODEL_PATH)
+
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            artifact_path="model",
+            registered_model_name=REGISTERED_MODEL_NAME,
+        )
+
+        print(f"Model saved to: {MODEL_PATH}")
+        print(f"train_accuracy: {train_accuracy:.4f}")
+        print(f"test_accuracy: {test_accuracy:.4f}")
+        print("MLflow run logged successfully")
 
 
 if __name__ == "__main__":
